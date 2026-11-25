@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Typing keeper buat bot @muse01fthbot — adaptasi dari typing_keeper.py
+"""Typing keeper buat bot — adaptasi dari typing_keeper.py
 repo twiceyuan/muse-telegram-connector (dibaca 22 Nov 2026, source:189).
 
 Masalah: status "mengetik..." Telegram cuma bertahan ~5 detik, padahal
@@ -9,17 +9,19 @@ gampang kelupaan di tengah kerja.
 
 Cara pakai (dari subagent, langkah awal proses-one.md):
   nohup python3 ~/workspace/muse-tele/typing_keeper.py <chat_id> \\
-      --done-file /tmp/muse-tele-typing-<message_id>.done \\
+      --done-file /tmp/muse-tele-typing-<chat_id>_<message_id>.done \\
       [--thread <thread_id>] [--max-seconds 600] \\
       >> ~/workspace/muse-tele/typing_keeper.log 2>&1 &
   ... kerja seperti biasa ...
-  touch /tmp/muse-tele-typing-<message_id>.done   # di akhir, sebelum selesai
+  touch /tmp/muse-tele-typing-<chat_id>_<message_id>.done   # di akhir
 
 Keeper kirim ulang typing tiap 4 detik lewat action.py (token tetap dibaca
 action.py dari Secure Vault — script ini TIDAK pernah pegang token).
 Berhenti sendiri kalau: file done muncul, sudah --max-seconds (default
 600 dtk = 10 menit, sama kayak repo aslinya), atau chat action gagal
 3x berturut-turut.
+Log typing_keeper.log dirotasi sendiri di awal run (> 512 KB dipotong
+jadi 100 baris terakhir) supaya tidak tumbuh tanpa batas.
 """
 import argparse
 import os
@@ -29,9 +31,21 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ACTION = os.path.join(HERE, 'action.py')
+LOG = os.path.join(HERE, 'typing_keeper.log')
 INTERVAL = 4          # detik antar typing (repo asli: 4 dtk)
 MAX_SECONDS = 600     # berhenti sendiri setelah 10 menit
 MAX_FAILS = 3
+
+
+def _rotate_log():
+    try:
+        if os.path.getsize(LOG) > 512 * 1024:
+            with open(LOG) as f:
+                lines = f.readlines()
+            with open(LOG, 'w') as f:
+                f.writelines(lines[-100:])
+    except Exception:
+        pass
 
 
 def typing_once(chat_id, thread_id):
@@ -51,6 +65,8 @@ def already_running(done_file):
     # Satu pesan = satu keeper. Subagent kadang menjalankan langkah awal
     # berulang kali (22 Nov 2026: keeper dinyalakan 3x untuk 1 pesan);
     # duplikat langsung keluar, typing ganda tidak ada gunanya.
+    # Nama pidfile diturunkan dari done-file — done-file memuat chat_id
+    # + message_id, jadi keeper dua chat tidak akan tabrakan.
     pidfile = '/tmp/tg-keeper-%s.pid' % os.path.basename(
         done_file).replace('.done', '')
     try:
@@ -76,6 +92,7 @@ def main():
     p.add_argument('--max-seconds', type=int, default=MAX_SECONDS)
     args = p.parse_args()
 
+    _rotate_log()
     if already_running(args.done_file):
         print('typing keeper sudah jalan, skip', flush=True)
         return

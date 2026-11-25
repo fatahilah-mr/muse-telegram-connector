@@ -1,5 +1,5 @@
 #!/bin/bash
-# Installer kit bot Telegram Muse AI (sistem @muse01fthbot, versi vault).
+# Installer kit bot Telegram Muse AI (sistem @muse01fthbot, versi vault v2).
 #
 # Pakai:
 #   bash install.sh <target_dir> <bot_username_tanpa_@> <credential_slug> <allowed_ids_koma>
@@ -11,12 +11,16 @@
 #   - salin script + process-one.md ke target_dir
 #   - ganti username bot di docstring + process-one.md
 #   - tulis config.json (nama kredensial vault) + state.json (allowlist, offset 0)
+#   - buat direktori kerja (processing, history, downloads)
 #   - cek semua .py bisa di-compile
+#   - cek surrogate vault bisa diambil (kredensial harus sudah terdaftar
+#     + terisi — lihat SETUP.md langkah 2)
 #
 # Yang TIDAK dilakukan script ini (harus lewat Muse + user, lihat SETUP.md):
 #   - daftarin token bot ke Secure Vault (credentials.request_api_access)
 #   - bikin cron dispatcher 1 menit (cron.add, body dari cron-body.md)
-#   - daftarin command ke BotFather (/start, /help, /id)
+#   - bikin cron health 1 jam (cron.add)
+#   - daftarin command ke BotFather (/start, /help, /id, /allow, /unallow, /status)
 #
 # KEAMANAN: kalau target_dir sudah berisi file .py, script BERHENTI — tidak
 # menimpa instalasi yang sudah ada. Hapus manual atau pakai target lain.
@@ -40,6 +44,7 @@ if ls "$TARGET"/*.py >/dev/null 2>&1; then
 fi
 
 cp "$KIT_DIR/scripts/"*.py "$KIT_DIR/scripts/process-one.md" "$TARGET/"
+mkdir -p "$TARGET/processing" "$TARGET/history" "$TARGET/downloads"
 
 # Username bot di docstring + process-one.md (kosmetik, tidak pengaruhi fungsi).
 grep -rl "@muse01fthbot" "$TARGET" | xargs sed -i "s/@muse01fthbot/@${BOT_USER}/g"
@@ -56,5 +61,13 @@ if [ ! -f "$TARGET/state.json" ]; then
 fi
 
 python3 -m py_compile "$TARGET"/*.py
-echo "OK: terinstal di $TARGET"
-echo "Lanjut ke SETUP.md langkah 3 (vault) dan 4 (cron)."
+
+# Cek surrogate vault (gagal keras kalau kredensial belum terdaftar/terisi).
+cd "$TARGET"
+if ! python3 -c "from vault_token import get_token; t = get_token(); assert t.startswith('hsurr:'), 'surrogate tidak valid'" 2>/dev/null; then
+  echo "GAGAL: surrogate vault untuk '$CRED' tidak bisa diambil."
+  echo "Pastikan langkah 2 SETUP.md sudah selesai (token sudah dipaste di secure entry)."
+  exit 1
+fi
+echo "OK: terinstal di $TARGET (vault OK)"
+echo "Lanjut ke SETUP.md langkah 5 (cron dispatcher + health)."

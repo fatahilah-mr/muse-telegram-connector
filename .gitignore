@@ -1,0 +1,14 @@
+# Jangan ke-commit: data instalasi lokal + artefak runtime.
+__pycache__/
+*.pyc
+state.json
+config.json
+processing/
+history/
+downloads/
+*.log
+run.lock
+plan.json
+heartbeat.txt
+ratelimit.json
+poll_failures.json
