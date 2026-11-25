@@ -180,8 +180,12 @@ class GateTest(unittest.TestCase):
     def test_media_tanpa_teks_yang_bisa_diproses_lolos(self):
         out = self._gate([self._upd(1, 111, text='', media='voice')])
         self.assertEqual(len(out['updates']), 1)
+        # Stiker lolos sejak 25 Nov 2026: file .webp kiriman user diubah
+        # Telegram jadi stiker (caption ikut hilang) — harus tetap dijawab.
         out2 = self._gate([self._upd(2, 111, text='', media='sticker')])
-        self.assertEqual(out2['updates'], [])
+        self.assertEqual(len(out2['updates']), 1)
+        out3 = self._gate([self._upd(3, 111, text='', media='animation')])
+        self.assertEqual(out3['updates'], [])
 
 
 class HistoryTest(unittest.TestCase):

@@ -6,9 +6,14 @@
     bikin ribut). Semua penolakan dicatat di rejections.log.
   - Rate limit: maks 10 pesan per user per 5 menit. Lebihnya di-drop;
     di chat privat dikirimi 1x pemberitahuan "sabar" per 5 menit.
-  - Media tanpa teks: hanya photo/video/document/voice/audio/video_note
-    yang diteruskan (ditangani cabang media di process-one.md);
-    sticker/animation/contact/location/poll dilewati diam-diam.
+  - Media tanpa teks: hanya photo/video/document/voice/audio/video_note/
+    sticker yang diteruskan (ditangani cabang media di process-one.md);
+    animation/contact/location/poll dilewati diam-diam (dicatat di
+    runs.log sebagai 'dropped' supaya tidak hilang tanpa jejak).
+    'sticker' masuk daftar sejak 25 Nov 2026: file gambar .webp yang
+    dikirim sebagai dokumen diubah Telegram jadi stiker dan captionnya
+    ikut hilang di Bot API — kalau stiker tetap di-drop, gambar kiriman
+    user diam-diam tidak pernah dijawab.
   - Tiap update yang lolos ditempeli riwayat chat (history.py) sebagai
     konteks percakapan.
   - Tiap run yang sukses memperbarui heartbeat.txt (dipakai health.py).
@@ -41,7 +46,7 @@ SEND_TIMEOUT = 40
 MAX_SENDS_PER_RUN = 5
 
 SPAWNABLE_MEDIA = ('photo', 'video', 'document', 'voice', 'audio',
-                    'video_note')
+                    'video_note', 'sticker')
 REJECT_TEXT = 'Maaf, bot ini privat — cuma buat owner-nya aja.'
 SLOWDOWN_TEXT = 'Sabar bro, kebanyakan pesan — tunggu sebentar ya.'
 
@@ -158,7 +163,14 @@ def main():
             continue
 
         if not text and media not in SPAWNABLE_MEDIA:
-            continue  # stiker/dll: lewati diam-diam (offset tetap maju)
+            # Dilewati diam-diam, tapi dicatat supaya tidak hilang
+            # tanpa jejak (pelajaran 25 Nov 2026: webp yang diam-diam
+            # di-drop baru ketahuan setelah dicek manual di runs.log).
+            _log(RUNS_LOG, {'ts': now, 'event': 'dropped',
+                            'from_id': from_id, 'chat_id': chat_id,
+                            'media': media,
+                            'message_id': u.get('message_id')})
+            continue  # animasi/kontak/dll: lewati (offset tetap maju)
 
         stamps = users.get(str(from_id), [])
         if len(stamps) >= RATE_MAX:
