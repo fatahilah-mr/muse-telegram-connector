@@ -203,6 +203,21 @@ def cmd_commit(spawned_csv):
         # pesan baru (ditemukan analisis ulang 25 Nov 2026).
         new_offset = int(max_uid) + 1
 
+    # Jejak audit commit — supaya kelihatan kalau --spawned yang
+    # dikirim worker tidak cocok dengan rencana (ditemukan 25 Nov 2026:
+    # tiap pesan dijawab 2x karena offset tidak maju; penyebabnya
+    # diduga worker mengirim --spawned yang tidak lengkap/salah).
+    try:
+        with open(os.path.join(HERE, 'runs.log'), 'a') as f:
+            f.write(json.dumps(
+                {'ts': int(time.time()), 'event': 'commit',
+                 'planned': [u.get('update_id') for u in updates],
+                 'spawned_arg': sorted(spawned),
+                 'max_update_id': max_uid,
+                 'new_offset': new_offset}, ensure_ascii=False) + '\n')
+    except Exception:
+        pass
+
     def release():
         _run([sys.executable, LOCK, 'release', token], timeout=30)
 
