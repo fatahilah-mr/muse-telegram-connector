@@ -6,9 +6,13 @@ Yang dites:
   - lock.py: acquire / LOCKED / release bertanda token / NOT-MINE
   - send.py: split_message (pendek, panjang, satu kata raksasa)
   - gate.py: allowlist, penolakan privat (cooldown), diam di grup,
-    rate limit + pemberitahuan "sabar", riwayat ditempel
-  - history.py: append/get, batas 20 entri, potong teks
-  - mark.py: create/delete/fail
+    rate limit + pemberitahuan "sabar", riwayat ditempel,
+    stiker lolos, entri ratelimit basi dibersihkan
+  - history.py: append/get, batas 20 entri, potong teks,
+    lock basi dihapus (append tidak lemot)
+  - mark.py: create/delete/fail, delete juga hapus flag .escalated
+  - dispatch.py: commit offset — semua ter-spawn, sebagian, kosong
+    tapi max_update_id ada (offset tetap maju), kosong total (tetap)
   - allow.py: add/remove/list, tolak hapus ID terakhir
   - vault_token.py: config.json rusak = gagal keras; tanpa config =
     fallback ke default (tanpa memanggil vault)
@@ -187,6 +191,23 @@ class GateTest(unittest.TestCase):
         out3 = self._gate([self._upd(3, 111, text='', media='animation')])
         self.assertEqual(out3['updates'], [])
 
+    def test_entri_ratelimit_basi_dibersihkan(self):
+        # Entri user kosong + catatan cooldown basi tidak boleh menumpuk
+        # selamanya di ratelimit.json (ditemukan analisis ulang 25 Nov).
+        import time as _time
+        now = int(_time.time())
+        with open(os.path.join(self.d, 'ratelimit.json'), 'w') as f:
+            json.dump({'users': {'555': [now - 9999]},
+                       'reject_at': {'555': now - 9999},
+                       'slowdown_at': {'555': now - 9999}}, f)
+        self._gate([self._upd(1, 111)])
+        with open(os.path.join(self.d, 'ratelimit.json')) as f:
+            rl = json.load(f)
+        self.assertNotIn('555', rl['users'])
+        self.assertNotIn('555', rl['reject_at'])
+        self.assertNotIn('555', rl['slowdown_at'])
+        self.assertIn('111', rl['users'])  # entri aktif tetap ada
+
 
 class HistoryTest(unittest.TestCase):
     def setUp(self):
@@ -233,6 +254,100 @@ class MarkTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertFalse(os.path.exists(
             os.path.join(self.d, 'processing', '7_42.failed.json')))
+
+    def test_delete_juga_hapus_escalated(self):
+        # Flag .escalated harus ikut terhapus saat marker dihapus
+        # (ditemukan analisis ulang 25 Nov 2026).
+        run_py(self.mark, ['create', '7', '42'], cwd=self.d)
+        flag = os.path.join(self.d, 'processing', '7_42.json.escalated')
+        with open(flag, 'w') as f:
+            f.write('1')
+        r = run_py(self.mark, ['delete', '7', '42'], cwd=self.d)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse(os.path.exists(flag))
+        self.assertFalse(os.path.exists(
+            os.path.join(self.d, 'processing', '7_42.json')))
+
+
+class DispatchOffsetTest(unittest.TestCase):
+    """dispatch.py commit: offset harus maju juga saat tidak ada update
+    yang perlu di-spawn tapi max_update_id ada (mis. update non-message
+    saja) — kalau tidak, run berikutnya mem-poll ulang update yang sama
+    terus (ditemukan analisis ulang 25 Nov 2026)."""
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        for name in ('dispatch.py', 'lock.py'):
+            shutil.copy(os.path.join(SCRIPTS, name),
+                        os.path.join(self.d, name))
+        # Stub watchdog (no-op) + stub poll/gate (tidak dipakai commit).
+        for name in ('stuck_watchdog.py',):
+            with open(os.path.join(self.d, name), 'w') as f:
+                f.write('import sys; sys.exit(0)\n')
+        os.makedirs(os.path.join(self.d, 'processing'), exist_ok=True)
+
+    def tearDown(self):
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def _commit(self, plan, offset_awal=100):
+        with open(os.path.join(self.d, 'plan.json'), 'w') as f:
+            json.dump(plan, f)
+        with open(os.path.join(self.d, 'state.json'), 'w') as f:
+            json.dump({'allowed': [111], 'offset': offset_awal}, f)
+        spawned = ','.join(str(u['update_id'])
+                           for u in plan.get('updates', []))
+        r = run_py(os.path.join(self.d, 'dispatch.py'),
+                   ['commit', '--spawned', spawned], cwd=self.d)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with open(os.path.join(self.d, 'state.json')) as f:
+            return json.load(f)['offset']
+
+    def test_updates_kosong_tapi_max_uid_ada_offset_maju(self):
+        plan = {'token': 't', 'updates': [], 'max_update_id': 105,
+                'escalations': []}
+        self.assertEqual(self._commit(plan), 106)
+
+    def test_semua_ter_spawn_offset_ke_max_uid(self):
+        plan = {'token': 't',
+                'updates': [{'update_id': 101}, {'update_id': 102}],
+                'max_update_id': 102, 'escalations': []}
+        self.assertEqual(self._commit(plan), 103)
+
+    def test_tidak_ada_update_sama_sekali_offset_tetap(self):
+        plan = {'token': 't', 'updates': [], 'max_update_id': None,
+                'escalations': []}
+        self.assertEqual(self._commit(plan), 100)
+
+
+class HistoryStaleLockTest(unittest.TestCase):
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        self.hist = os.path.join(self.d, 'history.py')
+        shutil.copy(os.path.join(SCRIPTS, 'history.py'), self.hist)
+
+    def tearDown(self):
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def test_lock_basi_dihapus_append_tidak_lemot(self):
+        # File .lock berumur > 30 detik (pemilik crash) harus dibuang
+        # supaya append tidak menunggu 5 detik tiap kali (ditemukan
+        # analisis ulang 25 Nov 2026).
+        import time as _time
+        hist_dir = os.path.join(self.d, 'history')
+        os.makedirs(hist_dir, exist_ok=True)
+        lock = os.path.join(hist_dir, '7.json.lock')
+        with open(lock, 'w') as f:
+            f.write('')
+        old = _time.time() - 60
+        os.utime(lock, (old, old))
+        t0 = _time.time()
+        r = run_py(self.hist, ['append', '7', 'user'],
+                   inp='tes lock basi', cwd=self.d)
+        dt = _time.time() - t0
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertLess(dt, 4.0, 'append menunggu lock basi terlalu lama')
+        r = run_py(self.hist, ['get', '7'], cwd=self.d)
+        self.assertEqual(json.loads(r.stdout)[0]['text'], 'tes lock basi')
 
 
 class AllowTest(unittest.TestCase):

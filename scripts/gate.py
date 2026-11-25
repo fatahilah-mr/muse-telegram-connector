@@ -135,6 +135,13 @@ def main():
     slowdown_at = rl.get('slowdown_at', {})
     for uid in list(users):
         users[uid] = [t for t in users[uid] if now - t < RATE_WINDOW]
+        if not users[uid]:
+            del users[uid]  # jangan simpan entri kosong selamanya
+    for d, window in ((reject_at, REJECT_COOLDOWN),
+                      (slowdown_at, SLOWDOWN_COOLDOWN)):
+        for uid in list(d):
+            if now - d[uid] >= window:
+                del d[uid]  # catatan cooldown basi tidak ada gunanya
 
     sender = Sender()
     kept = []

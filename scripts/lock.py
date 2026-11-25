@@ -38,7 +38,12 @@ if sys.argv[1] == 'acquire':
             print('OK %s' % token)
             raise SystemExit(0)
         except FileExistsError:
-            age = time.time() - os.path.getmtime(LOCK)
+            try:
+                age = time.time() - os.path.getmtime(LOCK)
+            except FileNotFoundError:
+                # Kunci dihapus run lain di antara cek dan baca — coba
+                # acquire lagi (ditemukan analisis ulang 25 Nov 2026).
+                continue
             if age < MAX_AGE:
                 print('LOCKED')
                 raise SystemExit(0)

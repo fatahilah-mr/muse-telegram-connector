@@ -45,6 +45,7 @@ def create(chat_id, message_id, thread_id=None):
 
 def delete(chat_id, message_id):
     for suffix in ('.json', '.json.hinted', '.json.hinted2',
+                   '.json.escalated',
                    '.failed.json', '.failed.json.notified'):
         try:
             os.remove(_path(chat_id, message_id, suffix))

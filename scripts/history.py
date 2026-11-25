@@ -48,7 +48,18 @@ def append_history(chat_id, role, text):
     path = _path(chat_id)
     os.makedirs(HIST_DIR, exist_ok=True)
     lock_path = path + '.lock'
-    # Kunci per chat, tunggu sampai ~5 detik.
+    # Kunci per chat, tunggu sampai ~5 detik. Kalau file kunci sudah
+    # basi (> 30 detik — pemiliknya crash sebelum sempat menghapus),
+    # hapus dulu: kalau tidak, setiap append berikutnya di chat ini
+    # selalu menunggu 5 detik sia-sia (ditemukan analisis ulang
+    # 25 Nov 2026).
+    try:
+        if time.time() - os.path.getmtime(lock_path) > 30:
+            os.remove(lock_path)
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
     have_lock = False
     for _ in range(50):
         try:

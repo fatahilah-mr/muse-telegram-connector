@@ -195,6 +195,13 @@ def cmd_commit(spawned_csv):
         new_offset = int(max_uid) + 1
     elif contiguous:
         new_offset = contiguous[-1] + 1
+    elif not updates and max_uid is not None:
+        # Tidak ada yang perlu di-spawn (mis. update non-message seperti
+        # edit pesan, atau semua ke-drop gate) tapi ada update yang
+        # terlihat — majukan offset melewatinya. Kalau tidak, run
+        # berikutnya mem-poll ulang update yang sama terus sampai ada
+        # pesan baru (ditemukan analisis ulang 25 Nov 2026).
+        new_offset = int(max_uid) + 1
 
     def release():
         _run([sys.executable, LOCK, 'release', token], timeout=30)

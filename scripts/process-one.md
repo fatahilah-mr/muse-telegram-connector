@@ -108,9 +108,17 @@ itu urusan dispatcher.
    terkirim): bersihkan tanda proses dulu, baru laporkan:
    `python3 ~/workspace/muse-tele/mark.py delete <chat_id> <message_id>; touch /tmp/muse-tele-typing-<chat_id>_<message_id>.done`
    (ini mematikan typing keeper + watchdog untuk pesan ini).
-   Terus simpan percakapan ke riwayat (buat konteks pesan berikutnya):
-   `printf '%s' '<teks user>' | python3 ~/workspace/muse-tele/history.py append <chat_id> user`
-   `printf '%s' '<teks balasan>' | python3 ~/workspace/muse-tele/history.py append <chat_id> bot`
+   Terus simpan percakapan ke riwayat (buat konteks pesan berikutnya).
+   Tulis teksnya lewat heredoc ber-tanda kutip — aman walau teksnya
+   mengandung tanda kutip tunggal (cara lama `printf '%s' '...'` bisa
+   pecah kalau teksnya ada `'`; ditemukan analisis ulang 25 Nov 2026).
+   Nama file temp memuat chat_id + message_id supaya dua subagent yang
+   jalan bareng tidak saling timpa:
+   `cat > /tmp/muse-tele-hist-<chat_id>_<message_id>.txt << 'MUSE_TELE_HIST_EOF'`
+   `<teks user>`
+   `MUSE_TELE_HIST_EOF`
+   `python3 ~/workspace/muse-tele/history.py append <chat_id> user < /tmp/muse-tele-hist-<chat_id>_<message_id>.txt`
+   (Ulangi file yang sama untuk teks balasan dengan role `bot`.)
    (Kalau balasan gagal terkirim, entri bot-nya isi "[balasan gagal terkirim]".)
    Laporkan singkat: "terkirim" + message_id balasan, atau "gagal" + sebabnya.
    Kalau gagal di tengah jalan sebelum balasan terkirim, tetap bersihkan
