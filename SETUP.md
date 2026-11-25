@@ -169,8 +169,11 @@ python3 ~/workspace/muse-telegram-kit/tests/test_kit.py
   `--reply-to` (Telegram jawab 400).
 - **Privacy mode ON**: @mention di grup tidak sampai ke bot kecuali
   bot jadi admin atau privacy dimatikan.
-- **Bot TIDAK bisa melihat foto** yang dikirim ke dia — cuma caption.
-  Bilang jujur begitu, jangan berlagak bisa lihat.
+- **Bot BISA melihat foto** yang dikirim ke dia (diunduh via `fetch.py`,
+  lalu dibaca — sejak v2, 25 Nov 2026). Foto, dokumen teks/PDF, dan
+  voice note juga bisa diproses. Stiker juga dibaca (file .webp yang
+  dikirim sebagai dokumen diubah Telegram jadi stiker dan captionnya
+  hilang di Bot API — bot tetap mendeskripsikan gambarnya).
 - **Jangan simpan token di file.** Sistem ini tidak membaca
   `bot-token.txt` sama sekali. Kalau ada file itu di instalasi lama,
   itu cuma backup darurat.
